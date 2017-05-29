@@ -6,8 +6,9 @@ from scrapy.item import Item, Field
 from scrapy.loader import ItemLoader
 from scrapy.loader.processors import Identity
 from scrapy.spiders.crawl import CrawlSpider
-from scrapylib.processors import default_input_processor, default_output_processor
-
+#from scrapylib.processors import default_input_processor, default_output_processor
+import scrapy
+import json
 
 __author__ = 'ttomlins'
 
@@ -61,8 +62,8 @@ class JobItem(Item):
 
 class JobItemLoader(ItemLoader):
     default_item_class = JobItem
-    default_input_processor = default_input_processor
-    default_output_processor = default_output_processor
+    #default_input_processor = default_input_processor
+    #default_output_processor = default_output_processor
     # all text fields are joined.
     description_in = Identity()
     description_out = NormalizedJoin()
@@ -80,25 +81,55 @@ APPEND_GB = lambda x: x.strip() + ", GB"
 
 
 class SimplyLawJobs(CrawlSpider):
-    """ Should navigate to the start_url, paginate through
-    the search results pages and visit each job listed.
-    For every job details page found, should produce a JobItem
-    with the relevant fields populated.
 
-    You can use the Rule system for CrawSpider (the base class)
-    or you can manually paginate in the "parse" method that is called
-    after the first page of search results is loaded from the start_url.
-
-    There are some utilities above like "NormalizedJoin" and JobItemLoader
-    to help making generating clean item data easier.
-    """
-    start_urls = ["http://www.simplylawjobs.com/jobs"]
-    name = 'lawjobsspider'
+	start_urls = ["http://www.simplylawjobs.com/jobs"]
+	name = 'lawjobsspider'
+	fixed_urls = "http://www.simplylawjobs.com"
+	
+	def parse(self, response):
+		#collect all job urls
+		links = response.xpath('//a[@class="button radius view_job_btn"]/@href').extract()
+		for link in links:
+			#add fixed url with links extracted
+			absolute_url = self.fixed_urls + link
+			#call job_data method on each url
+			yield scrapy.Request(absolute_url, callback=self.job_data)
 
     #----------------#
     #----------------#
     #-YOUR CODE HERE-#
     #----------------#
     #----------------#
+	
+	
+	def job_data(self, response):
+		#create instane of calls JobItem
+		item = JobItem()
+		#grab data from response page
+		j= json.loads(response.xpath('//div[@class="columns small-12 medium-4 large-4 details"]/script/text()').extract()[0], strict=False)
+		
+		#crawl title of the job
+		item['title'] = j.get('title')
+		
+		#crawl url of the job
+		item['url'] = response.url
+		
+		#crawl company name 
+		item['company'] = j['hiringOrganization']['name']
+ 		
+		#crawl full address 
+		item['location'] = j['jobLocation']['address']['addressLocality']
+		
+		#crawl description
+		item['description'] = j.get('description')
+		
+		#apply_url requires authentication to crawl
+		
+		# optional fields
+		item['industry'] = j.get('industry')
+		#crawl salary
+		item['baseSalary'] = j.get('baseSalary')
+		
+		return item
 
 
